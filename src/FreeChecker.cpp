@@ -5,6 +5,8 @@
 #include "VulnDetect/PointerLoc.h"
 
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -64,6 +66,10 @@ private:
           handleFree(Freed, &I, S, Report);
           continue;
         }
+        if (Value *Old = vuln::reallocatedPointer(CB)) {
+          handleRealloc(Old, CB, S, Report);
+          continue;
+        }
         if (classifyAlloc(CB, TLI).IsAlloc) {
           S.set(canonicalLoc(CB), FreeState::Allocated);
           continue;
@@ -76,8 +82,17 @@ private:
 
       SmallVector<const Value *, 2> Derefs;
       collectDerefs(&I, Derefs);
-      for (const Value *Q : Derefs)
+      for (const Value *Q : Derefs) {
+        // Skip slot and global addresses. canonicalLoc folds a load-from-slot
+        // onto the slot, so that key tracks the heap object stored in the slot
+        // — not the slot's own address, which is stack memory and is never the
+        // thing being freed. Reading the pointer variable back out of the slot
+        // after a free is not itself a use-after-free.
+        const Value *Obj = getUnderlyingObject(Q);
+        if (isa<AllocaInst>(Obj) || isa<GlobalValue>(Obj))
+          continue;
         checkUse(Q, &I, S, Report);
+      }
 
       if (const Value *Slot = vuln::storeSlot(&I)) {
         auto *SI = cast<StoreInst>(&I);
@@ -99,6 +114,27 @@ private:
                     "possible double-free of " + label(Freed), I);
     }
     S.set(L, FreeState::Freed);
+  }
+
+  // realloc both releases its argument and returns a new block, so it is
+  // neither a plain free nor a plain allocation.
+  void handleRealloc(Value *Old, CallBase *CB, State &S, bool Report) {
+    const Value *L = canonicalLoc(Old);
+    FreeState St = S.get(L);
+    if (Report) {
+      if (St == FreeState::Freed)
+        Diag.report(Severity::High, "CWE-416",
+                    "realloc of already-freed " + label(Old), CB);
+      else if (St == FreeState::MaybeFreed)
+        Diag.report(Severity::Medium, "CWE-416",
+                    "possible realloc of already-freed " + label(Old), CB);
+    }
+    // On failure realloc returns null and leaves the old block valid, so the
+    // old pointer is only possibly freed afterwards. Recording it as certainly
+    // freed would report the standard recovery path — q = realloc(p, n); if
+    // (!q) { free(p); ... } — as a double-free.
+    S.set(L, FreeState::MaybeFreed);
+    S.set(canonicalLoc(CB), FreeState::Allocated);
   }
 
   void checkUse(const Value *Q, Instruction *I, State &S, bool Report) {
