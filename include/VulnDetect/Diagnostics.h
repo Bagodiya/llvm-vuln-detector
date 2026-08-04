@@ -22,11 +22,8 @@ public:
   void report(Severity Sev, llvm::StringRef CWE, llvm::StringRef Message,
               const llvm::Instruction *I);
 
-  unsigned count() const { return Count; }
-
 private:
   Severity Min;
-  unsigned Count = 0;
 };
 
 } // namespace vuln

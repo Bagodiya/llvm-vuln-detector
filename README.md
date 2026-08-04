@@ -27,6 +27,7 @@ at runtime; this finds candidate bugs statically on all paths.
 | Deref on the null branch of a guard | 476 | error | `if (p == NULL) { *p = 0; }` |
 | Deref of an unchecked allocation result | 476 | warning | `p = malloc(n); *p = 0;` |
 | Use-after-free joined from one path | 416 | warning | freed on one predecessor only |
+| Use of the old block after `realloc` | 416 | warning | `q = realloc(p, n); *p = 0;` |
 
 `error` findings are reported on a path where the bad state is certain. `warning`
 findings hold on at least one incoming path (the join of states) or come from an
@@ -43,7 +44,11 @@ each with its own lattice:
 
 The `meet` at CFG joins is danger-sticky: `meet(Freed, Allocated) = MaybeFreed`
 and `meet(Null, NonNull) = MaybeNull`, so a bug on one predecessor is never
-silently lost. The null analysis also refines state along guard edges: after
+silently lost. `Unknown` is the absence of a fact rather than a danger, so it
+meets away against the safe element — `meet(NonNull, Unknown) = NonNull` — and a
+join does not invent a warning that neither incoming path justified.
+
+The null analysis also refines state along guard edges: after
 `%c = icmp eq ptr %p, null ; br i1 %c, %t, %e`, `%p` is `Null` on the `%t` edge
 and `NonNull` on the `%e` edge. That edge refinement is what keeps correctly
 guarded allocations from being flagged.
@@ -71,8 +76,12 @@ cmake -G Ninja -B build -DLLVM_DIR="$(llvm-config --cmakedir)"
 cmake --build build
 ```
 
-This produces `build/libVulnDetect.so` (`.dylib` on some setups). The plugin API
-used here is stable across LLVM 18–23.
+This produces `build/libVulnDetect.so` (`.dylib` on some setups). It is built
+and tested against LLVM 23. The new-PM plugin API itself has not changed since
+LLVM 18, but LLVM 23 moved `PassPlugin.h` out of `Passes/` into its own
+`Plugins/` library; `src/Plugin.cpp` picks the right header with `__has_include`.
+Older releases are not exercised here, so treat them as untested rather than
+supported.
 
 ## Running
 
@@ -151,6 +160,12 @@ compiler from `$CLANG` or `PATH`.
   unified.
 - Unrecognized calls are assumed not to free their arguments unless
   `-vuln-paranoid` is set.
+- `realloc` is modelled as a possible free of the old block rather than a
+  certain one, because it returns null and leaves that block valid on failure.
+  Uses of the old pointer come out as warnings, and the recovery path
+  `q = realloc(p, n); if (!q) { free(p); ... }` is reported as a possible
+  double-free even though it is correct. Both drop out under
+  `-vuln-min-severity=high`.
 - This is a bug finder, not a sound checker. Treat findings as candidates.
 
 ## Troubleshooting

@@ -1,6 +1,7 @@
 #include "VulnDetect/Pass.h"
 
 #include "llvm/Passes/PassBuilder.h"
+// LLVM 23 moved PassPlugin.h out of Passes/ into its own Plugins/ library.
 #if __has_include("llvm/Passes/PassPlugin.h")
 #include "llvm/Passes/PassPlugin.h"
 #else

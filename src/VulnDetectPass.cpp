@@ -11,10 +11,12 @@ using namespace llvm;
 
 namespace {
 
-cl::opt<std::string>
-    MinSeverity("vuln-min-severity",
-                cl::desc("Lowest severity to report: high or medium"),
-                cl::init("medium"));
+cl::opt<vuln::Severity> MinSeverity(
+    "vuln-min-severity", cl::desc("Lowest severity to report"),
+    cl::values(clEnumValN(vuln::Severity::High, "high", "errors only"),
+               clEnumValN(vuln::Severity::Medium, "medium",
+                          "errors and warnings")),
+    cl::init(vuln::Severity::Medium));
 
 cl::opt<bool> Paranoid("vuln-paranoid",
                        cl::desc("Treat unrecognized calls as possible frees"),
@@ -39,9 +41,7 @@ PreservedAnalyses VulnDetectPass::run(Function &F,
 
   const TargetLibraryInfo &TLI = FAM.getResult<TargetLibraryAnalysis>(F);
 
-  Severity Min =
-      MinSeverity == "high" ? Severity::High : Severity::Medium;
-  DiagEngine Diag(Min);
+  DiagEngine Diag(MinSeverity);
 
   Options Opts;
   Opts.Paranoid = Paranoid;

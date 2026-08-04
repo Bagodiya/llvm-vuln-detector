@@ -13,7 +13,6 @@ void DiagEngine::report(Severity Sev, StringRef CWE, StringRef Message,
                         const Instruction *I) {
   if (Min == Severity::High && Sev == Severity::Medium)
     return;
-  ++Count;
 
   const char *Label = Sev == Severity::High ? "error" : "warning";
   errs() << Label << ": [" << CWE << "] " << Message << '\n';
