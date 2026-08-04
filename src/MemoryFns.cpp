@@ -27,10 +27,14 @@ static bool isNonNullAllocName(StringRef N) {
   return N.starts_with("_Znw") || N.starts_with("_Zna");
 }
 
+static bool isReallocName(StringRef N) {
+  return N == "realloc" || N == "reallocf" || N == "reallocarray";
+}
+
 static bool isNullableAllocName(StringRef N) {
-  return N == "malloc" || N == "calloc" || N == "realloc" || N == "reallocf" ||
-         N == "aligned_alloc" || N == "valloc" || N == "memalign" ||
-         N == "strdup" || N == "strndup";
+  return N == "malloc" || N == "calloc" || N == "aligned_alloc" ||
+         N == "valloc" || N == "memalign" || N == "strdup" ||
+         N == "strndup" || isReallocName(N);
 }
 
 AllocInfo classifyAlloc(const CallBase *CB, const TargetLibraryInfo &TLI) {
@@ -54,6 +58,16 @@ Value *freedPointer(const CallBase *CB, const TargetLibraryInfo &TLI) {
   if (Value *P = getFreedOperand(CB, &TLI))
     return P;
   if (isFreeName(calleeName(CB)) && CB->arg_size() >= 1)
+    return CB->getArgOperand(0);
+  return nullptr;
+}
+
+Value *reallocatedPointer(const CallBase *CB) {
+  // The attribute-based helper only fires on allockind("realloc") declarations,
+  // which hand-written IR and older headers do not carry; fall back to the name.
+  if (Value *P = getReallocatedOperand(CB))
+    return P;
+  if (isReallocName(calleeName(CB)) && CB->arg_size() >= 1)
     return CB->getArgOperand(0);
   return nullptr;
 }

@@ -29,6 +29,11 @@ AllocInfo classifyAlloc(const llvm::CallBase *CB,
 llvm::Value *freedPointer(const llvm::CallBase *CB,
                           const llvm::TargetLibraryInfo &TLI);
 
+// The old block handed to a realloc-family call, or null for anything else.
+// Such a call both releases its argument and returns a new allocation, so
+// callers have to handle it as a free and an allocation at once.
+llvm::Value *reallocatedPointer(const llvm::CallBase *CB);
+
 } // namespace vuln
 
 #endif
