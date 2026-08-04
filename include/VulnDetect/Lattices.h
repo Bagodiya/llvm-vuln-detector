@@ -41,9 +41,15 @@ inline NullState meet(NullState a, NullState b) {
     return a;
   if (a == NullState::MaybeNull || b == NullState::MaybeNull)
     return NullState::MaybeNull;
-  // Any disagreement involving Null, or NonNull vs Unknown, collapses to the
-  // conservative MaybeNull so guarded and unguarded paths join safely.
-  return NullState::MaybeNull;
+  // Null joined with anything else means "null on at least one path", and is
+  // downgraded from certain to possible.
+  if (a == NullState::Null || b == NullState::Null)
+    return NullState::MaybeNull;
+  // Remaining cases pair NonNull with Unknown. Unknown is the absence of a
+  // fact, so the join must not invent one: a pointer nobody has said anything
+  // about does not become suspicious just by being merged with a pointer that
+  // is known good. This mirrors meet(Allocated, Unknown) above.
+  return NullState::NonNull;
 }
 
 } // namespace vuln

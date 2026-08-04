@@ -14,8 +14,9 @@
 namespace vuln {
 
 // A map from abstract locations to lattice elements. Absent keys read back as
-// Unknown, which the meet treats as a real "nothing known" value rather than an
-// identity element.
+// Unknown, so a location the analysis has never touched joins the same way
+// whether it is missing from one side of the meet or explicitly Unknown on
+// both.
 template <class Elem> class StateMap {
   llvm::DenseMap<const llvm::Value *, Elem> M;
 
